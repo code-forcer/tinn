@@ -5,6 +5,17 @@ const verifyToken = require('../middleware/verifyToken');
 const requireAdmin = require('../middleware/requireAdmin');
 const optionalAuth = require('../middleware/optionalAuth');
 
+// Static export build needs this to know every /poll/[id] route at build time.
+// Must stay above any "/:id" style route.
+router.get("/ids", async (req, res) => {
+  try {
+    const questions = await Question.find({}, '_id');
+    res.json(questions);
+  } catch (err) {
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
+});
+
 router.get("/", optionalAuth, async (req, res) => {
   try {
     const all = await Question.find().sort({ createdAt: -1 });
