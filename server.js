@@ -132,6 +132,7 @@ app.get("/api/health", (req, res) => {
 });
 
 // API Routes
+app.use("/api/share", require("./routes/share"));
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/dashboard", require("./routes/dashboard"));
 app.use("/api/questions", require("./routes/questions"));
