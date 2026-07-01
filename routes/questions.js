@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Question = require('../models/Question');
+const Vote = require('../models/Vote');
 const verifyToken = require('../middleware/verifyToken');
 const requireAdmin = require('../middleware/requireAdmin');
 const optionalAuth = require('../middleware/optionalAuth');
@@ -11,6 +12,58 @@ router.get("/ids", async (req, res) => {
   try {
     const questions = await Question.find({}, '_id');
     res.json(questions);
+  } catch (err) {
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
+});
+
+// Bulk build-time data: question text + top reaction term for EVERY question
+// in a single response, so generateMetadata doesn't need one fetch per page
+// (avoids hammering the backend with hundreds of parallel requests during build).
+router.get("/build-data", async (req, res) => {
+  try {
+    const questions = await Question.find({}, '_id text');
+
+    const topTermsByQuestion = await Vote.aggregate([
+      { $unwind: '$selectedTerms' },
+      {
+        $group: {
+          _id: {
+            questionId: '$questionId',
+            term: { $trim: { input: '$selectedTerms' } }
+          },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { count: -1 } },
+      {
+        $group: {
+          _id: '$_id.questionId',
+          topTerm: { $first: '$_id.term' },
+          topCount: { $first: '$count' },
+          totalSelections: { $sum: '$count' }
+        }
+      }
+    ]);
+
+    const resultsMap = {};
+    topTermsByQuestion.forEach(item => {
+      resultsMap[item._id.toString()] = {
+        topTerm: item.topTerm,
+        topPercentage: item.totalSelections > 0
+          ? parseFloat(((item.topCount / item.totalSelections) * 100).toFixed(1))
+          : null
+      };
+    });
+
+    const data = questions.map(q => ({
+      id: q._id.toString(),
+      text: q.text,
+      topTerm: resultsMap[q._id.toString()]?.topTerm || null,
+      topPercentage: resultsMap[q._id.toString()]?.topPercentage || null
+    }));
+
+    res.json(data);
   } catch (err) {
     res.status(500).json({ message: "Server error", error: err.message });
   }
